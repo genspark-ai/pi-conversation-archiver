@@ -1,0 +1,15 @@
+{
+  "name": "pi-conversation-archiver",
+  "version": "0.1.0",
+  "description": "Report pi session status and titles to GenTerminal over OSC 9999 (sidebar Sessions name sync + status).",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "private": false,
+  "pi": {
+    "extensions": [
+      "./extensions/conversation-archiver.ts"
+    ]
+  }
+}
