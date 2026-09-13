@@ -40,7 +40,62 @@ interface PiEventContextLike {
   sessionManager?: {
     getSessionFile?: () => string | null | undefined;
     getSessionId?: () => string | null | undefined;
+    getEntries?: () => unknown;
   };
+}
+
+interface PiMessagePartLike {
+  type?: string;
+  text?: string;
+}
+
+interface PiEntryLike {
+  type?: string;
+  message?: { role?: string; content?: unknown };
+}
+
+/** Flatten a message content value (string or text parts) to plain text. */
+function textOfContent(content: unknown): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        const p = part as PiMessagePartLike | null;
+        return p && typeof p === 'object' && p.type === 'text' && typeof p.text === 'string'
+          ? p.text
+          : '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '';
+}
+
+/**
+ * The FIRST user message already in the session — present when pi resumes,
+ * forks or re-opens an existing session. Without this, `session_start` would
+ * reset the derived title and the next prompt would rename the record away
+ * from the conversation's original title (Bugbot on PR #608). A brand-new
+ * session has no user entries yet, so this returns null and the first prompt
+ * supplied via `before_agent_start` takes over.
+ */
+function firstUserPromptFromSession(ctx: unknown): string | null {
+  const entries = (ctx as PiEventContextLike | undefined)?.sessionManager?.getEntries?.();
+  if (!Array.isArray(entries)) {
+    return null;
+  }
+  for (const raw of entries) {
+    const entry = raw as PiEntryLike;
+    if (entry?.type === 'message' && entry.message?.role === 'user') {
+      const text = textOfContent(entry.message.content).trim();
+      if (text) {
+        return text;
+      }
+    }
+  }
+  return null;
 }
 
 function sessionIdOf(ctx: unknown): string {
@@ -70,7 +125,10 @@ export default function piConversationArchiver(pi: PiExtensionApiLike): void {
 
   pi.on('session_start', (event, ctx) => {
     turns = 0;
-    firstPrompt = null;
+    // Resume/fork/re-open: recover the conversation's original first prompt
+    // from the existing history so the derived title is not replaced by the
+    // next prompt. New/startup sessions have no user entries yet.
+    firstPrompt = firstUserPromptFromSession(ctx);
     const reason = (event as { reason?: string } | undefined)?.reason;
     report(ctx, 'SessionStarted', reason === 'resume' ? 'Session resumed' : 'Session started');
   });
