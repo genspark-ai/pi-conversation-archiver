@@ -26,6 +26,7 @@ const {
   SESSION_TITLE_MAX_LEN,
   SOURCE,
   buildOscSequence,
+  cwdBasename,
   deriveTitleFromPrompt,
   resolveTitle,
   wrapForTmux,
@@ -70,6 +71,14 @@ check(
 );
 const longLine = 'x'.repeat(200);
 check('120-char cap', deriveTitleFromPrompt(longLine).length, SESSION_TITLE_MAX_LEN);
+
+// ── /new fallback title (cwd basename) ────────────────────────────────────
+check('cwd basename posix', cwdBasename('/srv/app'), 'app');
+check('cwd basename trailing slash', cwdBasename('/srv/app/'), 'app');
+check('cwd basename windows', cwdBasename('C:\\Users\\dev\\proj'), 'proj');
+check('cwd basename root is null', cwdBasename('/'), null);
+check('cwd basename empty is null', cwdBasename(''), null);
+check('cwd basename missing is null', cwdBasename(undefined), null);
 
 // ── OSC 9999 wire contract ────────────────────────────────────────────────
 const seq = buildOscSequence(SOURCE, 'sess-1', 'TurnStarted', 'Fix it', 'Turn 1 started', null);

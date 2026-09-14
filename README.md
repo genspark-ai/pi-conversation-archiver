@@ -28,7 +28,7 @@ sourceId:<session file>, event, title, body, tmux}`:
 
 | pi event              | `body`                      | Notes |
 |-----------------------|-----------------------------|-------|
-| `session_start`       | `Session started` / `Session resumed` | reason `resume` says resumed |
+| `session_start`       | `Session started` / `Session resumed` | reason `resume` says resumed; reason `new` (`/new`) titles the fresh conversation with the working directory's basename, reverting the previous title |
 | `before_agent_start`  | `Turn N started`            | counts turns per session; carries the first-prompt title |
 | `agent_settled`       | `Turn complete · N turns`   | fired once the run can no longer continue (retry / compaction / queued follow-ups done) |
 | `session_info_changed`| `Session renamed`           | carries the new name (a `/name` rename) |
@@ -43,6 +43,13 @@ sourceId:<session file>, event, title, body, tmux}`:
    …), first non-empty line, 120-char cap;
 3. the fixed placeholder **`Pi`** — GenTerminal filters placeholder titles, so
    a fresh session never clobbers the user's chosen record name.
+
+On `/new` (a fresh, nameless conversation) pi emits no `session_info_changed`,
+so the previously reported title would otherwise stick on the record forever.
+The plugin therefore reports the **working directory's basename** on
+`session_start` with reason `new` — a normal title the app renames to, without
+any app-side change or stored baseline. `startup` keeps the placeholder, so a
+record the user named by hand is untouched on first launch.
 
 GenTerminal's sidebar Sessions section joins on
 `payload.tmux.session == record.tmux_name` (consent: the record was created

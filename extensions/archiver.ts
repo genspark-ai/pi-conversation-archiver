@@ -90,6 +90,23 @@ export function deriveTitleFromPrompt(prompt: string | null | undefined): string
 }
 
 /**
+ * Last path segment of pi's working directory (`ctx.cwd`) — the managed tmux
+ * record's natural default label. Used when a session has NO title at all and
+ * there is nothing to derive one from: a `/new` conversation (see the
+ * `session_start` wiring) must REVERT the previously reported title, and the
+ * cwd basename is the deterministic, field-free value to revert to. Handles
+ * POSIX and Windows separators; returns null for a root/empty cwd.
+ */
+export function cwdBasename(cwd: string | null | undefined): string | null {
+  if (typeof cwd !== 'string') {
+    return null;
+  }
+  const trimmed = cwd.replace(/[\\/]+$/, '');
+  const base = trimmed.split(/[\\/]/).pop() ?? '';
+  return base.trim() ? base.trim().slice(0, SESSION_TITLE_MAX_LEN) : null;
+}
+
+/**
  * Title resolution order, mirroring what pi's own session picker displays:
  *   1. the user's session name (`/name`, `--name`, `pi.setSessionName()`) —
  *      the explicit rename, highest priority;

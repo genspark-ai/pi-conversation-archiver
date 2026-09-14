@@ -4,7 +4,11 @@
  * cc/codex/opencode-conversation-archiver.
  *
  * Loaded by pi as a package extension. Reports:
- *   - session_start        → "Session started" / "Session resumed"
+ *   - session_start        → "Session started" / "Session resumed"; on
+ *                            reason "new" (`/new`) the title reverts to the
+ *                            working directory's basename, because the fresh
+ *                            conversation has no title and pi emits no
+ *                            session_info_changed to clear the old one
  *   - before_agent_start   → "Turn N started" (and the first-prompt title)
  *   - agent_settled        → "Turn complete · N turns"
  *   - session_info_changed → the new title (a /name rename)
@@ -19,6 +23,7 @@
  */
 import {
   SOURCE,
+  cwdBasename,
   emitNotification,
   resolveTitle,
   tmuxContext,
@@ -37,6 +42,8 @@ interface PiExtensionApiLike {
 }
 
 interface PiEventContextLike {
+  /** Current working directory (pi's ExtensionContext.cwd). */
+  cwd?: string;
   sessionManager?: {
     getSessionFile?: () => string | null | undefined;
     getSessionId?: () => string | null | undefined;
@@ -104,19 +111,24 @@ function sessionIdOf(ctx: unknown): string {
   return typeof id === 'string' && id ? id : 'pi';
 }
 
+/** The user's explicit session name, trimmed, or null (`/name`, `--name`,
+ *  `pi.setSessionName()`). Never throws into pi's event loop. */
+function readSessionName(pi: PiExtensionApiLike): string | null {
+  try {
+    const name = pi.getSessionName?.();
+    return typeof name === 'string' && name.trim() ? name.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function piConversationArchiver(pi: PiExtensionApiLike): void {
   let turns = 0;
   let firstPrompt: string | null = null;
 
   const report = (ctx: unknown, event: string, body: string, overrideTitle?: string): void => {
     try {
-      let sessionName: string | null = null;
-      try {
-        sessionName = pi.getSessionName?.() ?? null;
-      } catch {
-        sessionName = null;
-      }
-      const title = overrideTitle ?? resolveTitle(sessionName, firstPrompt);
+      const title = overrideTitle ?? resolveTitle(readSessionName(pi), firstPrompt);
       emitNotification(SOURCE, sessionIdOf(ctx), event, title, body, tmuxContext());
     } catch {
       // never disrupt the session
@@ -125,11 +137,31 @@ export default function piConversationArchiver(pi: PiExtensionApiLike): void {
 
   pi.on('session_start', (event, ctx) => {
     turns = 0;
-    // Resume/fork/re-open: recover the conversation's original first prompt
-    // from the existing history so the derived title is not replaced by the
-    // next prompt. New/startup sessions have no user entries yet.
-    firstPrompt = firstUserPromptFromSession(ctx);
     const reason = (event as { reason?: string } | undefined)?.reason;
+    if (reason === 'new') {
+      // `/new` starts a FRESH, nameless conversation and pi emits NO
+      // session_info_changed for it, so nothing would clear the previous
+      // conversation's title — the managed record + tab would keep it. Report
+      // the working directory's basename (the record's natural default label)
+      // as a normal rename so the app reverts both, no app change needed. A
+      // session name still wins if the new session somehow carries one; with
+      // neither, the placeholder is reported and the app leaves the name as
+      // the user set it.
+      firstPrompt = null;
+      report(
+        ctx,
+        'SessionStarted',
+        'Session started',
+        readSessionName(pi) ??
+          cwdBasename((ctx as PiEventContextLike | undefined)?.cwd) ??
+          undefined,
+      );
+      return;
+    }
+    // Resume/fork/re-open/reload: recover the conversation's original first
+    // prompt from the existing history so the derived title is not replaced by
+    // the next prompt. Startup sessions have no user entries yet.
+    firstPrompt = firstUserPromptFromSession(ctx);
     report(ctx, 'SessionStarted', reason === 'resume' ? 'Session resumed' : 'Session started');
   });
 
